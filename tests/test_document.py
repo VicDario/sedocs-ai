@@ -171,3 +171,62 @@ def test_use_case_cards_pass_their_source_option_to_every_card(tmp_path):
     spec["sections"][0]["content"] = [{"use_case_cards": {"module": "M2", "title": "One title for all"}}]
     with pytest.raises(BuildError, match="use_case_cards: unknown option"):
         build_document(write_spec(tmp_path, spec), tmp_path / "bad.docx")
+
+
+def test_a_single_responsible_person_can_be_given_as_text(tmp_path):
+    spec = base_spec()
+    spec["document"]["responsible"] = "Jane Doe"
+    report = build_document(write_spec(tmp_path, spec), tmp_path / "out.docx")
+    assert "Responsible: Jane Doe" in body_text(report.output)
+
+
+@pytest.mark.parametrize("change, message", [
+    (lambda s: s["sources"].append(dict(s["sources"][0])), "source id 'cockburn' is used more than once"),
+    (lambda s: s["sources"].append({**s["sources"][0], "id": "cock-burn"}), "same Word tag"),
+    (lambda s: s["sections"][0]["content"].append({"requirements_table": {"kind": "functional", "tittle": "x"}}),
+     "requirements_table: unknown option(s) tittle"),
+    (lambda s: s["sections"][0]["content"].append({"figure": {"title": "C", "diagram": {"type": "context", "module": "M1"}}}),
+     "unknown diagram option(s) module"),
+    (lambda s: s["sections"][0]["content"].append({"table": {"title": "T", "columns": ["A"], "rows": [["1"]], "widths": ["wide"]}}),
+     "section 'Scope', block 'table'"),
+    (lambda s: s["sections"][1]["sections"][0].__setitem__(
+        "sections", [{"heading": "L3", "sections": [{"heading": "L4", "content": ["too deep"]}]}]), "up to three levels"),
+    (lambda s: s.__setitem__("profile", {"captions": "above"}), "profile.captions must be a mapping"),
+    (lambda s: s.__setitem__("profile", {"paragraph": {"align": "centre"}}), "paragraph.align must be"),
+])
+def test_more_mistakes_are_reported_instead_of_ignored(tmp_path, change, message):
+    spec = base_spec()
+    change(spec)
+    with pytest.raises(BuildError, match=re.escape(message)):
+        build_document(write_spec(tmp_path, spec), tmp_path / "out.docx")
+
+
+def test_a_model_with_errors_stops_the_build(tmp_path):
+    path = write_spec(tmp_path, base_spec())
+    model = tmp_path / "project.yaml"
+    model.write_text(model.read_text(encoding="utf-8").replace("actors: [veterinarian]", "actors: [nobody]"), encoding="utf-8")
+    with pytest.raises(BuildError, match="the project model has 5 error"):
+        build_document(path, tmp_path / "out.docx")
+
+
+def test_hand_written_blocks_and_table_spacing(tmp_path):
+    spec = base_spec()
+    spec["sections"] = [{"heading": "Blocks", "content": [
+        {"bullets": ["first point", "second point"]}, {"numbered": ["step one", "step two"]},
+        {"table": {"title": "Sizes", "columns": ["Item", "Size"], "rows": [["A", "1\n2"]], "center": [1]}},
+        {"page_break": False}, {"actors_table": "Actors"}, {"business_rules_table": {"title": "Rules"}},
+        {"requirements_table": "non_functional"}, {"traceability_table": True}]}]
+    report = build_document(write_spec(tmp_path, spec), tmp_path / "out.docx")
+    lines = body_text(report.output)
+    assert "first point" in lines and "2. step two" in lines
+    info = inspect_docx(report.output)
+    assert [c["text"] for c in info["captions"]] == ["Table 1. Sizes.", "Table 2. Actors.", "Table 3. Rules.",
+                                                      "Table 4. Requirements.", "Table 5. Requirement traceability."]
+    document = docx.Document(str(report.output))
+    assert not any(run.contains_page_break for paragraph in document.paragraphs for run in paragraph.runs)
+    body = list(document.element.body)
+    first_table = next(i for i, element in enumerate(body) if element.tag == qn("w:tbl"))
+    caption = docx.text.paragraph.Paragraph(body[first_table - 1], document)
+    after = docx.text.paragraph.Paragraph(body[first_table + 1], document)
+    assert caption.paragraph_format.space_after.pt == 4          # the caption keeps its own spacing
+    assert after.text == "" and after.paragraph_format.space_after.pt == 0   # a small spacer follows the table

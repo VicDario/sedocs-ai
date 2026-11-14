@@ -124,7 +124,12 @@ def sort_key(source: dict) -> str:
 
 
 def sources_xml(sources: list[dict]) -> bytes:
-    """The bibliography part Word reads to manage sources and to refresh citation fields."""
+    """The bibliography part Word reads to manage sources and to refresh citation fields.
+
+    Word ships an APA sixth edition style and no seventh, so that is the style named here. The
+    text written into the document is APA 7; if the user refreshes the fields, Word re-renders
+    them with its own style.
+    """
     def esc(text) -> str:
         return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 

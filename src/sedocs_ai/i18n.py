@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import re
 
 LANGUAGES = ("en", "es")
 
@@ -40,6 +41,7 @@ LABELS: dict[str, dict[str, str]] = {
         "exceptions": "Exceptions",
         "business_rules": "Business rules",
         "use_case_card": "Use case card",
+        "traceability": "Requirement traceability",
         "none": "—",
         "human": "Person",
         "system": "System",
@@ -80,6 +82,7 @@ LABELS: dict[str, dict[str, str]] = {
         "exceptions": "Excepciones",
         "business_rules": "Reglas de negocio",
         "use_case_card": "Ficha del caso de uso",
+        "traceability": "Trazabilidad de requerimientos",
         "none": "—",
         "human": "Persona",
         "system": "Sistema",
@@ -97,10 +100,12 @@ _MONTHS = {
 
 
 def language(code: str | None) -> str:
-    code = (code or "en").lower()[:2]
-    if code not in LANGUAGES:
+    """'en', 'es' or a locale such as 'es-CL'; anything else is an error rather than a guess."""
+    text = str(code or "en").strip().lower()
+    base = text.replace("_", "-").split("-")[0]
+    if base not in LANGUAGES or not re.fullmatch(r"[a-z]{2}(-[a-z0-9]{2,4})?", text.replace("_", "-")):
         raise ValueError(f"unsupported language '{code}': use one of {', '.join(LANGUAGES)}")
-    return code
+    return base
 
 
 def t(lang: str, key: str, **values) -> str:

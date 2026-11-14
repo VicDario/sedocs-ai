@@ -25,9 +25,9 @@ from docx.shared import Cm, Inches, Pt, RGBColor, Twips
 
 from . import citations, i18n
 from .context import render_context_diagram
-from .model import ModelError, Project, load_project
+from .model import ModelError, Project, load_project, validate
 from .profile import ProfileError, load_profile
-from .raster import png_size, svg_to_png
+from .raster import RenderError, png_size, svg_to_png
 from .usecase import DiagramError, render_use_case_diagram
 
 INLINE = re.compile(r"(\{cite:[^}]+\}|\*\*[^*]+\*\*|\*[^*\s][^*]*\*)")
@@ -36,6 +36,7 @@ PAGE_SIZES = {"letter": (Inches(8.5), Inches(11)), "a4": (Cm(21), Cm(29.7))}
 ALIGN = {"justify": WD_ALIGN_PARAGRAPH.JUSTIFY, "left": WD_ALIGN_PARAGRAPH.LEFT}
 MODEL_BLOCKS = ("actors_table", "requirements_table", "business_rules_table", "use_case_table", "use_case_card",
                 "use_case_cards", "traceability_table")
+HEADING_SIZES = {1: 16, 2: 13, 3: 11.5}     # points, for the three heading levels
 DIAGRAM_PX_PER_INCH = 200     # diagrams are drawn at this scale, so their text prints at about 7 pt
 BLOCKS = ("paragraph", "bullets", "numbered", "table", "figure", "page_break", "references") + MODEL_BLOCKS
 
@@ -123,13 +124,26 @@ class _Builder:
             self.profile = load_profile(spec.get("profile"), base_dir)
         except (ModelError, ProfileError) as exc:
             raise BuildError(str(exc)) from exc
+        if self.project is not None:
+            errors = [issue for issue in validate(self.project) if issue.level == "error"]
+            if errors:
+                raise BuildError(f"the project model has {len(errors)} error(s); run 'sedocs check' on it. "
+                                 f"First: {errors[0].message}")
         meta = spec.get("document") or {}
         if not isinstance(meta, dict):
             raise BuildError("'document' must be a mapping with the cover data")
         try:
             self.lang = i18n.language(meta.get("language") or self.profile["language"]
                                       or (self.project.language if self.project else "en"))
-            self.sources = {s["id"]: s for s in (citations.normalise(raw) for raw in spec.get("sources") or [])}
+            self.sources = {}
+            tags: dict[str, str] = {}
+            for source in (citations.normalise(raw) for raw in spec.get("sources") or []):
+                if source["id"] in self.sources:
+                    raise BuildError(f"source id '{source['id']}' is used more than once")
+                clash = tags.setdefault(citations.tag(source["id"]), source["id"])
+                if clash != source["id"]:   # Word identifies sources by letters and digits only
+                    raise BuildError(f"source ids '{clash}' and '{source['id']}' become the same Word tag; rename one")
+                self.sources[source["id"]] = source
         except (ValueError, citations.CitationError) as exc:
             raise BuildError(str(exc)) from exc
         self.meta = self._cover_data(meta)
@@ -142,7 +156,8 @@ class _Builder:
     def _cover_data(self, meta: dict) -> dict:
         project = str(meta.get("project") or (self.project.name if self.project else ""))
         people = []
-        for person in meta.get("responsible") or []:
+        listed = meta.get("responsible") or []
+        for person in (listed if isinstance(listed, (list, tuple)) else [listed]):   # one person may be given alone
             if isinstance(person, dict):
                 name, role = str(person.get("name") or "").strip(), str(person.get("role") or "").strip()
             else:
@@ -215,7 +230,7 @@ class _Builder:
         font, size, accent = self.profile["fonts"]["body"], float(self.profile["fonts"]["size"]), self.colors["accent"]
         styles = self.doc.styles
         _set_style_font(styles["Normal"], font, size)
-        for level, points in ((1, 16), (2, 13), (3, 11.5)):
+        for level, points in HEADING_SIZES.items():
             style = styles[f"Heading {level}"]
             _set_style_font(style, font, points, bold=True, color=accent, italic=False)
             style.paragraph_format.space_before = Pt(18 if level == 1 else 12)
@@ -298,7 +313,7 @@ class _Builder:
             paragraph = self.doc.add_paragraph()
             run = paragraph.add_run(text)
             run.bold = True
-            run.font.size = Pt({1: 16, 2: 13, 3: 11.5}[level])
+            run.font.size = Pt(HEADING_SIZES[level])
         paragraph.paragraph_format.keep_with_next = True
 
     # ------------------------------------------------------------------ cover and contents
@@ -347,6 +362,8 @@ class _Builder:
         unknown = set(item) - {"heading", "content", "sections", "page_break"}
         if unknown:
             raise BuildError(f"section '{item['heading']}': unknown key(s) {', '.join(sorted(unknown))}")
+        if level > len(HEADING_SIZES):
+            raise BuildError(f"section '{item['heading']}': sections nest up to three levels")
         if item.get("page_break"):
             self.doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
         self._heading(str(item["heading"]), level)
@@ -368,8 +385,10 @@ class _Builder:
             raise BuildError(f"section '{where}': block '{kind}' needs a project model; set 'model:' in the spec")
         try:
             getattr(self, "_b_" + kind)(value)
-        except (DiagramError, citations.CitationError) as exc:
+        except (DiagramError, RenderError, citations.CitationError) as exc:
             raise BuildError(f"section '{where}', block '{kind}': {exc}") from exc
+        except (TypeError, ValueError) as exc:     # a value of the wrong kind, such as text where a number goes
+            raise BuildError(f"section '{where}', block '{kind}': a value has the wrong type ({exc})") from exc
 
     def _b_paragraph(self, value) -> None:
         self._paragraph(str(value))
@@ -389,7 +408,8 @@ class _Builder:
             paragraph.paragraph_format.space_after = Pt(3)
 
     def _b_page_break(self, value) -> None:
-        self.doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        if value:
+            self.doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
 
     # ------------------------------------------------------------------ captions
     def _caption(self, kind: str, title: str, keep_next: bool):
@@ -431,8 +451,12 @@ class _Builder:
         if not above:
             self._caption(kind, title, keep_next=False)
         self._source_line(kind, source)
-        if not above or not (source if source is not None else self.profile["captions"]["source_line"]):
-            self.doc.paragraphs[-1].paragraph_format.space_after = Pt(10)
+        has_source = bool(source if source is not None else self.profile["captions"]["source_line"])
+        if kind == "table" and above and not has_source:
+            # Nothing follows the table: a small empty paragraph separates it from what comes next.
+            spacer = self._paragraph(body_format=False)
+            spacer.paragraph_format.space_before = spacer.paragraph_format.space_after = Pt(0)
+            spacer.paragraph_format.line_spacing = Pt(8)
 
     # ------------------------------------------------------------------ tables
     def _widths(self, columns: list[str], rows: list[list[str]], widths) -> list[int]:
@@ -582,6 +606,8 @@ class _Builder:
             svg, crossings = render_use_case_diagram(self.project, **options)
             self.report.warnings += [f"figure '{title}': {c}" for c in crossings]
         elif kind == "context":
+            if set(options) - {"title"}:
+                raise BuildError(f"figure '{title}': unknown diagram option(s) {', '.join(sorted(set(options) - {'title'}))}")
             svg = render_context_diagram(self.project, options.get("title"))
         else:
             raise BuildError(f"figure '{title}': unknown diagram type '{kind}' (use usecase or context)")
@@ -593,10 +619,16 @@ class _Builder:
         return svg_to_png(folder / f"{stem}.svg", folder / f"{stem}.png"), drawn / DIAGRAM_PX_PER_INCH
 
     # ------------------------------------------------------------------ model-driven blocks
-    def _options(self, value, default_key: str) -> dict:
+    def _options(self, block: str, value, default_key: str, allowed: tuple[str, ...]) -> dict:
+        """Options of a model block. A bare value stands for `default_key`; unknown options are errors."""
         if isinstance(value, dict):
-            return dict(value)
-        return {} if value in (True, None) else {default_key: value}
+            options = dict(value)
+        else:
+            options = {} if value in (True, None) else {default_key: value}
+        unknown = set(options) - set(allowed)
+        if unknown:
+            raise BuildError(f"{block}: unknown option(s) {', '.join(sorted(unknown))} (known: {', '.join(allowed)})")
+        return options
 
     def _names(self, actor_ids: list[str]) -> str:
         names = [(self.project.actor(a) or {"name": a})["name"] for a in actor_ids]
@@ -606,14 +638,14 @@ class _Builder:
         return i18n.t(self.lang, key)
 
     def _b_actors_table(self, value) -> None:
-        options = self._options(value, "title")
+        options = self._options("actors_table", value, "title", ("title", "source"))
         rows = [[a["name"], self._label(a["kind"]), a.get("description", "")] for a in self.project.actors]
         self._titled_table(options.get("title") or self._label("actors"),
                            [self._label("actor"), self._label("kind"), self._label("description")], rows,
                            options.get("source"), widths=[22, 14, 64])
 
     def _b_requirements_table(self, value) -> None:
-        options = self._options(value, "kind")
+        options = self._options("requirements_table", value, "kind", ("kind", "title", "source"))
         kind = options.get("kind", "functional")
         if kind == "functional":
             columns = [self._label("id"), self._label("name"), self._label("description"), self._label("actors")]
@@ -629,7 +661,7 @@ class _Builder:
                            widths=widths, center=(0,))
 
     def _b_business_rules_table(self, value) -> None:
-        options = self._options(value, "title")
+        options = self._options("business_rules_table", value, "title", ("title", "source"))
         rows = [[r["id"], r.get("description", ""), ", ".join(r["requirements"])] for r in self.project.business_rules]
         self._titled_table(options.get("title") or self._label("business_rules"),
                            [self._label("id"), self._label("rule"), self._label("requirements")], rows,
@@ -642,7 +674,7 @@ class _Builder:
         return self.project.use_cases_of(str(module) if module is not None else None)
 
     def _b_use_case_table(self, value) -> None:
-        options = self._options(value, "module")
+        options = self._options("use_case_table", value, "module", ("module", "title", "source"))
         rows = [[u["id"], u["name"], self._names(u["actors"]), ", ".join(u["requirements"]),
                  self.project.relations_text(u) or self._label("none")] for u in self._selected(options)]
         self._titled_table(options.get("title") or self._label("use_cases"),
@@ -651,7 +683,7 @@ class _Builder:
                            widths=[11, 24, 20, 18, 27], center=(0,))
 
     def _b_use_case_card(self, value) -> None:
-        options = self._options(value, "id")
+        options = self._options("use_case_card", value, "id", ("id", "title", "source"))
         uc = self.project.use_case(str(options.get("id")))
         if uc is None:
             raise BuildError(f"use case '{options.get('id')}' is not defined in the model")
@@ -671,10 +703,8 @@ class _Builder:
         self._titled_table(title, ["", ""], rows, options.get("source"), widths=[24, 76], label_cols=(0,))
 
     def _b_use_case_cards(self, value) -> None:
-        options = self._options(value, "module")
-        unknown = set(options) - {"module", "source"}
-        if unknown:  # each card is titled after its own use case, so there is no shared title to set
-            raise BuildError(f"use_case_cards: unknown option(s) {', '.join(sorted(unknown))} (known: module, source)")
+        # Each card is titled after its own use case, so there is no shared title to set.
+        options = self._options("use_case_cards", value, "module", ("module", "source"))
         for uc in self._selected(options):
             card = {"id": uc["id"]}
             if "source" in options:
@@ -682,14 +712,14 @@ class _Builder:
             self._b_use_case_card(card)
 
     def _b_traceability_table(self, value) -> None:
-        options = self._options(value, "title")
+        options = self._options("traceability_table", value, "title", ("title", "source"))
         rows = []
         for req in self.project.functional:
             cases = [u["id"] for u in self.project.use_cases if req["id"] in u["requirements"]]
             rules = [r["id"] for r in self.project.business_rules if req["id"] in r["requirements"]]
             rows.append([req["id"], req["name"], ", ".join(cases) or self._label("none"),
                          ", ".join(rules) or self._label("none")])
-        self._titled_table(options.get("title") or self._label("requirements"),
+        self._titled_table(options.get("title") or self._label("traceability"),
                            [self._label("id"), self._label("requirement"), self._label("use_cases"),
                             self._label("business_rules")], rows, options.get("source"),
                            widths=[11, 37, 28, 24], center=(0,))
@@ -746,6 +776,7 @@ class _Builder:
         while f"/customXml/item{number}.xml" in existing:
             number += 1
         item = Part(PackURI(f"/customXml/item{number}.xml"), "application/xml", blob, package)
+        # The item id only has to be a GUID that is unique inside the package; a fixed one keeps builds repeatable.
         props_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="no"?>'
                      '<ds:datastoreItem ds:itemID="{8C5C0E4F-5E0B-4A0B-9C1D-5ED0C5A1D0C5}" '
                      'xmlns:ds="http://schemas.openxmlformats.org/officeDocument/2006/customXml">'

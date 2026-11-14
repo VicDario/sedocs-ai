@@ -35,6 +35,8 @@ def inspect_docx(path: str | Path) -> dict:
         properties = element.find(qn("w:pPr"))
         if properties is not None and properties.find(qn("w:pStyle")) is not None:
             style = properties.find(qn("w:pStyle")).get(qn("w:val"))
+        # Style ids are localised by Word and lose their non-ASCII letters: Heading1, Ttulo1 (Título),
+        # Titre1, berschrift1 (Überschrift).
         if style and re.fullmatch(r"(Heading|Ttulo|Titre|berschrift)\s?(\d)", style):
             headings.append((int(style[-1]), text))
         has_sequence = any("SEQ" in (i.text or "") for i in element.iter(qn("w:instrText")))

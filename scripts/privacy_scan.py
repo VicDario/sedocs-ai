@@ -1,26 +1,34 @@
 #!/usr/bin/env python3
-"""Privacy scan for the files tracked (or staged) in this repository.
+"""Privacy scan for the content this repository is about to publish.
 
 Two checks:
-1. No text shaped like a national ID number: digit groups separated by dots, a hyphen and a check digit.
+1. No text shaped like a national ID number: digit groups, a hyphen and a check digit.
 2. No term from the optional local list `.private/forbidden-terms.txt`, which is git-ignored so
    that the terms themselves never enter the repository.
 
-Usage: python scripts/privacy_scan.py            (scans `git ls-files` plus staged files)
+What is scanned: every tracked file, and for files with staged changes the staged content itself
+(what the commit will contain), not the copy in the working tree.
+
+Usage: python scripts/privacy_scan.py
 Exit code 1 when something is found.
 """
 from __future__ import annotations
 
+import io
 import re
 import subprocess
 import sys
 import unicodedata
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TERMS_FILE = ROOT / ".private" / "forbidden-terms.txt"
-ID_NUMBER = re.compile(r"\b\d{1,2}\.\d{3}\.\d{3}-[\dkK]\b")
-BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".docx", ".pptx", ".xlsx", ".zip"}
+# Seven or eight digits, with or without dots between the groups, a hyphen and a check digit.
+ID_NUMBER = re.compile(r"(?<![\w.])(?:\d{1,2}\.\d{3}\.\d{3}|\d{7,8})-[\dkK](?!\w)")
+OFFICE_SUFFIXES = {".docx", ".pptx", ".xlsx"}
+SKIPPED_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip"}
+TEXT_RUN = re.compile(r"<(?:w|a):t(?:\s[^>]*)?>([^<]*)</(?:w|a):t>")
 
 
 def fold(text: str) -> str:
@@ -29,12 +37,25 @@ def fold(text: str) -> str:
     return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn").lower()
 
 
-def tracked_files() -> list[Path]:
-    names: set[str] = set()
-    for args in (["git", "ls-files"], ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"]):
-        out = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=True).stdout
-        names.update(line for line in out.splitlines() if line)
-    return sorted(ROOT / name for name in names if (ROOT / name).is_file())
+def _git(*args: str) -> bytes:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, check=True).stdout
+
+
+def _names(*args: str) -> list[str]:
+    # -z: names are separated by NUL and never quoted, so non-ASCII file names are not skipped.
+    return [name for name in _git(*args, "-z").decode("utf-8", "surrogateescape").split("\0") if name]
+
+
+def contents() -> list[tuple[str, bytes]]:
+    """(path, bytes) of everything to scan; staged files are read from the index."""
+    staged = set(_names("diff", "--cached", "--name-only", "--diff-filter=ACMR"))
+    found = []
+    for name in sorted(set(_names("ls-files")) | staged):
+        if name in staged:
+            found.append((name, _git("show", f":{name}")))
+        elif (ROOT / name).is_file():
+            found.append((name, (ROOT / name).read_bytes()))
+    return found
 
 
 def load_terms() -> list[tuple[str, re.Pattern[str]]]:
@@ -48,36 +69,49 @@ def load_terms() -> list[tuple[str, re.Pattern[str]]]:
     return terms
 
 
-def docx_text(path: Path) -> str:
-    """Text of the XML parts of an Office file, so binary documents are scanned too."""
-    import zipfile
-
-    chunks = []
-    with zipfile.ZipFile(path) as archive:
+def office_text(data: bytes) -> str:
+    """Text of an Office file. Word splits a word across several runs, so the runs of each
+    paragraph are joined without separators; the tag-stripped XML is added for everything else."""
+    lines = []
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
         for name in archive.namelist():
-            if name.endswith((".xml", ".rels")):
-                chunks.append(re.sub(r"<[^>]+>", " ", archive.read(name).decode("utf-8", "replace")))
-    return "\n".join(chunks)
+            if not name.endswith((".xml", ".rels")):
+                continue
+            xml = archive.read(name).decode("utf-8", "replace")
+            for paragraph in re.split(r"</(?:w|a):p>", xml):
+                joined = "".join(TEXT_RUN.findall(paragraph))
+                if joined:
+                    lines.append(joined)
+            lines.append(re.sub(r"<[^>]+>", " ", xml))
+    return "\n".join(lines)
+
+
+def scan_text(text: str, terms: list[tuple[str, re.Pattern[str]]]) -> list[tuple[int, str]]:
+    """(line number, what was found) for one file's text."""
+    found = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if ID_NUMBER.search(line):
+            found.append((number, "text shaped like a national ID number"))
+        folded = fold(line)
+        for term, pattern in terms:
+            if pattern.search(folded):
+                found.append((number, f"forbidden term ({len(term)} characters, see local list)"))
+    return found
 
 
 def main() -> int:
     terms = load_terms()
     findings: list[str] = []
-    for path in tracked_files():
-        rel = path.relative_to(ROOT)
-        if path.suffix.lower() in {".docx", ".pptx", ".xlsx"}:
-            text = docx_text(path)
-        elif path.suffix.lower() in BINARY_SUFFIXES:
+    for name, data in contents():
+        suffix = Path(name).suffix.lower()
+        if suffix in SKIPPED_SUFFIXES:
             continue
-        else:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        for number, line in enumerate(text.splitlines(), 1):
-            if ID_NUMBER.search(line):
-                findings.append(f"{rel}:{number}: text shaped like a national ID number")
-            folded = fold(line)
-            for term, pattern in terms:
-                if pattern.search(folded):
-                    findings.append(f"{rel}:{number}: forbidden term ({len(term)} characters, see local list)")
+        try:
+            text = office_text(data) if suffix in OFFICE_SUFFIXES else data.decode("utf-8", errors="replace")
+        except zipfile.BadZipFile:
+            findings.append(f"{name}: cannot be opened as an Office file, so it cannot be scanned")
+            continue
+        findings += [f"{name}:{number}: {what}" for number, what in scan_text(text, terms)]
     if findings:
         print("privacy scan FAILED")
         for finding in findings:

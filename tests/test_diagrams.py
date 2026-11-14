@@ -103,3 +103,34 @@ def test_svg_to_png(example_project, tmp_path):
     svg_file.write_text(render_use_case_diagram(example_project, module="M2")[0], encoding="utf-8")
     png = svg_to_png(svg_file, tmp_path / "diagram.png", width=800)
     assert png_size(png)[0] == 800
+
+
+def test_repeated_ids_are_drawn_once_and_bad_positions_are_rejected(example_project):
+    spec = build_layout(example_project, use_cases=["UC-2.01", "UC-2.01", "UC-2.03"], neighbors=False)
+    assert [u["id"] for u in spec["usecases"]] == ["UC-2.01", "UC-2.03"]
+    for bad in ({"UC-1.01": [100]}, {"UC-1.01": "here"}, {"UC-1.01": [1, "x"]}):
+        with pytest.raises(DiagramError, match="positions"):
+            build_layout(example_project, module="M1", positions=bad)
+
+
+def test_many_same_column_relations_stay_on_the_outline(example_data):
+    hub = example_data["use_cases"][0]                      # UC-1.01, same column as the other receptionist cases
+    for number in range(6, 12):
+        example_data["use_cases"].append({"id": f"UC-1.{number:02d}", "name": f"Extra goal {number}", "module": "M1",
+                                          "actors": ["receptionist"], "requirements": ["FR-01"],
+                                          "extends": [{"target": hub["id"], "condition": "x"}]})
+    spec = build_layout(Project(example_data), module="M1")
+    hub_shape = next(u for u in spec["usecases"] if u["id"] == hub["id"])
+    offsets = [rel["to_dy"] for rel in spec["relations"] if rel.get("to") == hub["id"] and "to_dy" in rel]
+    assert len(offsets) >= 6 and all(abs(dy) <= 0.8 * hub_shape["ry"] for dy in offsets)
+
+
+@pytest.mark.skipif(not any(shutil.which(tool) for tool in ("rsvg-convert", "inkscape", "magick")),
+                    reason="no SVG converter installed")
+def test_converter_failures_are_reported_as_render_errors(tmp_path):
+    from sedocs_ai.raster import RenderError
+
+    broken = tmp_path / "broken.svg"
+    broken.write_text("this is not svg", encoding="utf-8")
+    with pytest.raises(RenderError, match="could not convert"):
+        svg_to_png(broken, tmp_path / "broken.png")

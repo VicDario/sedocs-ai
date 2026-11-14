@@ -45,6 +45,7 @@ BOUNDARY_LABEL_LH = 26
 BULGE_OUT = 42
 BULGE_STEP = 16
 PORT_STEP = 14
+PORT_LIMIT = 0.8     # share of the vertical radius a connection point may use
 
 
 class DiagramError(Exception):
@@ -56,7 +57,7 @@ def select_use_cases(project: Project, module: str | None = None, ids: list[str]
                      neighbors: bool = True) -> list[dict]:
     if ids:
         chosen = []
-        for uc_id in ids:
+        for uc_id in dict.fromkeys(ids):          # an id given twice is drawn once
             uc = project.use_case(uc_id)
             if uc is None:
                 raise DiagramError(f"use case '{uc_id}' is not defined in the model")
@@ -189,7 +190,9 @@ def build_layout(project: Project, *, module: str | None = None, use_cases: list
             for end in ("from", "to"):  # 0, +14, -14, +28, ... around the middle of the ellipse
                 n = ports.get(rel[end], 0)
                 ports[rel[end]] = n + 1
-                rel[end + "_dy"] = ((n + 1) // 2) * PORT_STEP * (1 if n % 2 else -1) if n else 0
+                reach = PORT_LIMIT * sizes[rel[end]][2]     # past this the line would miss the outline
+                offset = ((n + 1) // 2) * PORT_STEP * (1 if n % 2 else -1) if n else 0
+                rel[end + "_dy"] = max(-reach, min(reach, offset))
     gap = max(COL_GAP, BULGE_OUT + bulges[0] * BULGE_STEP + label_room[0] + 30) if col_b else 0
     last = 1 if col_b else 0
     right_pad = max(60, BULGE_OUT + bulges[last] * BULGE_STEP + label_room[last] + 20)
@@ -235,7 +238,12 @@ def build_layout(project: Project, *, module: str | None = None, use_cases: list
             raise DiagramError(f"positions given for elements that are not in the diagram: {', '.join(unknown)}")
         for element in usecases + actors:
             if element["id"] in positions:
-                element["x"], element["y"] = (float(v) for v in positions[element["id"]])
+                try:
+                    px, py = positions[element["id"]]
+                    element["x"], element["y"] = float(px), float(py)
+                except (TypeError, ValueError):
+                    raise DiagramError(f"positions: '{element['id']}' needs two numbers [x, y], "
+                                       f"found {positions[element['id']]!r}") from None
         _finalize(spec, keep=True)
     return spec
 

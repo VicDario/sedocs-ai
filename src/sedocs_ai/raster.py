@@ -6,12 +6,17 @@ import subprocess
 from pathlib import Path
 
 
-class RenderToolMissing(RuntimeError):
+class RenderError(RuntimeError):
+    """A diagram could not be turned into an image."""
+
+
+class RenderToolMissing(RenderError):
     pass
 
 
 def svg_to_png(svg_path: str | Path, png_path: str | Path, width: int = 2400) -> Path:
-    svg_path, png_path = Path(svg_path), Path(png_path)
+    # Absolute paths: a file name that starts with a dash is never read as an option.
+    svg_path, png_path = Path(svg_path).resolve(), Path(png_path).resolve()
     if shutil.which("rsvg-convert"):
         command = ["rsvg-convert", "-w", str(width), str(svg_path), "-o", str(png_path)]
     elif shutil.which("inkscape"):
@@ -23,7 +28,13 @@ def svg_to_png(svg_path: str | Path, png_path: str | Path, width: int = 2400) ->
         raise RenderToolMissing(
             "no SVG converter found: install librsvg (rsvg-convert), Inkscape or ImageMagick, "
             "or ask for the .svg output instead")
-    subprocess.run(command, check=True, capture_output=True)
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True, timeout=120)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        detail = (getattr(exc, "stderr", "") or "").strip().splitlines()[-1:] or ["no message"]
+        raise RenderError(f"{command[0]} could not convert {svg_path.name}: {detail[0]}") from exc
+    if not png_path.is_file():
+        raise RenderError(f"{command[0]} could not convert {svg_path.name}: no image was written")
     return png_path
 
 

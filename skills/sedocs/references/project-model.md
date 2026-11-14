@@ -8,7 +8,7 @@ One YAML file, usually `project.yaml`, holds everything the artefacts are genera
 project:
   name: Appointment Booking System      # required
   organization: Harbor Vet Clinic       # optional, shown on covers
-  language: en                          # en or es: language of every generated label
+  language: en                          # en or es (or a locale such as es-CL): language of every generated label
 
 actors:
   - id: receptionist                    # used in references; never shown
@@ -66,7 +66,7 @@ Identifiers are free text: keep the convention the project already uses (FR-01, 
 
 ## Validation codes
 
-Errors (exit code 1): `missing-field`, `duplicate-id`, `invalid-value`, `unknown-actor`, `unknown-requirement`, `unknown-module`, `unknown-use-case`, `self-reference`, `include-cycle`, `generalization-cycle`.
+Errors (exit code 1): `missing-field`, `duplicate-id`, `invalid-value`, `unknown-key`, `unknown-actor`, `unknown-requirement`, `unknown-module`, `unknown-use-case`, `self-reference`, `include-cycle`, `generalization-cycle`.
 
 Warnings (the model is probably incomplete):
 

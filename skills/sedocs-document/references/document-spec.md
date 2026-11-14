@@ -6,7 +6,7 @@
 document:
   title: Use Case Specification          # required
   responsible:                           # required: who answers for the document
-    - {name: Jane Doe, role: Business analyst}
+    - {name: Jane Doe, role: Business analyst}   # a single name as plain text also works
   date: 2026-03-02                       # required; a YAML date is written out in the output language
   project: Appointment Booking System    # default: project.name of the model
   organization: Harbor Vet Clinic        # optional; default: project.organization
@@ -40,10 +40,12 @@ A block is plain text (a paragraph) or a mapping with one key.
 | `business_rules_table` | Title text, or `{title, source}` |
 | `use_case_table` | Module id, or `{module, title, source}`; without a module it lists every use case |
 | `use_case_card` | Use case id, or `{id, title, source}` |
-| `use_case_cards` | `{module: M1}` or `{}` for all; one card per use case |
-| `traceability_table` | Title text; functional requirements against use cases and business rules |
+| `use_case_cards` | `{module: M1, source: ...}` or `{}` for all; one card per use case, each titled after its use case |
+| `traceability_table` | Title text, or `{title, source}`; functional requirements against use cases and business rules |
 
 `diagram` is the id of an entry under `diagrams` in the model, or inline: `{type: usecase, module: M1, use_cases: [...], title: ..., positions: {...}, show_ids: true, neighbors: false}` or `{type: context, title: ...}`.
+
+An option a block does not know is an error, never ignored. The build also stops when the model has errors.
 
 `source` on a table or figure overrides the profile: `true` or `own` writes the standard source line, text writes that text, `false` writes none.
 

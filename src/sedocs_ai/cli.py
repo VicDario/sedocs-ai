@@ -22,7 +22,7 @@ from .doctor import check as doctor_check
 from .document import BuildError, build_document
 from .model import ModelError, has_errors, load_project, validate
 from .preview import PreviewError, preview
-from .raster import RenderToolMissing, svg_to_png
+from .raster import RenderError, svg_to_png
 from .usecase import DiagramError, render_use_case_diagram
 
 
@@ -186,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
                "inspect": _inspect, "doctor": _doctor}[args.command]
     try:
         return handler(args)
-    except (ModelError, DiagramError, BuildError, PreviewError, RenderToolMissing) as exc:
+    except (ModelError, DiagramError, BuildError, PreviewError, RenderError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

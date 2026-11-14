@@ -38,7 +38,9 @@ def _merge(base: dict, extra: dict, where: str = "profile") -> dict:
     for key, value in extra.items():
         if key not in base:
             raise ProfileError(f"unknown {where} setting '{key}' (known: {', '.join(sorted(base))})")
-        if isinstance(base[key], dict) and isinstance(value, dict):
+        if isinstance(base[key], dict):
+            if not isinstance(value, dict):
+                raise ProfileError(f"{where}.{key} must be a mapping of settings, not '{value}'")
             _merge(base[key], value, f"{where}.{key}")
         else:
             base[key] = value
@@ -74,6 +76,8 @@ def load_profile(ref, base_dir: Path) -> dict:
                 profile[section][key] = resolved
     if profile["captions"]["position"] not in ("above", "below"):
         raise ProfileError("captions.position must be 'above' or 'below'")
+    if profile["paragraph"]["align"] not in ("justify", "left"):
+        raise ProfileError("paragraph.align must be 'justify' or 'left'")
     if profile["page"]["size"] not in ("letter", "a4"):
         raise ProfileError("page.size must be 'letter' or 'a4'")
     if profile["cover"]["enabled"] == "auto":

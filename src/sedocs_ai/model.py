@@ -159,6 +159,8 @@ def load_project(path: str | Path) -> Project:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ModelError(f"project model not found: {path}") from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ModelError(f"project model cannot be read: {path} ({exc})") from exc
     except yaml.YAMLError as exc:
         raise ModelError(f"{path} is not valid YAML: {exc}") from exc
     return Project(data or {}, path)
@@ -280,6 +282,12 @@ def validate(project: Project) -> list[Issue]:
             error(f"{relation}-cycle", f"{relation} relations form a cycle: {' → '.join(cycle)}")
 
     for flow in project.context_flows:
+        stray = sorted(str(key) for key in set(flow) - {"actor", "direction", "label"})
+        if stray:
+            error("unknown-key", f"context flow '{flow.get('label', '')}' has unknown key(s) {', '.join(stray)}; "
+                                 "quote a label that contains a comma or a colon")
+        if not str(flow.get("label") or "").strip():
+            error("missing-field", f"a context flow of actor '{flow.get('actor')}' has no label")
         if str(flow.get("actor") or "") not in actor_ids:
             error("unknown-actor", f"context flow '{flow.get('label', '')}' names actor '{flow.get('actor')}', which is not defined")
         if flow.get("direction") not in ("in", "out"):

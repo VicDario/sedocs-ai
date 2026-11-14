@@ -29,9 +29,11 @@ def build_layout(project: Project, title: str | None = None) -> dict:
     lang = project.language
     flows: dict[str, dict[str, list[str]]] = {}
     for flow in project.context_flows:
-        entry = flows.setdefault(str(flow.get("actor")), {"in": [], "out": []})
-        if flow.get("direction") in entry:
-            entry[flow["direction"]].append(str(flow.get("label") or ""))
+        actor, direction, label = str(flow.get("actor")), flow.get("direction"), str(flow.get("label") or "").strip()
+        if project.actor(actor) is None or direction not in ("in", "out") or not label:
+            raise DiagramError(f"context flow {dict(flow)!r} needs a defined actor, direction 'in' or 'out' and a label; "
+                               "run 'sedocs check' on the model")
+        flows.setdefault(actor, {"in": [], "out": []})[direction].append(label)
     actors = [a for a in project.actors if a["id"] in flows]
     if not actors:
         raise DiagramError("the model has no context flows: add 'context.flows' entries with actor, direction and label")

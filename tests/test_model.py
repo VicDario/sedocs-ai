@@ -68,3 +68,19 @@ def test_unreadable_models_raise(tmp_path):
         load_project(tmp_path / "missing.yaml")
     with pytest.raises(ModelError):
         Project({"project": {"name": "X", "language": "fr"}})
+
+
+def test_unreadable_files_and_loose_language_codes_are_model_errors(tmp_path):
+    with pytest.raises(ModelError, match="cannot be read"):
+        load_project(tmp_path)                              # a directory, not a file
+    for code in ("english", "e", "fr-FR"):
+        with pytest.raises(ModelError, match="unsupported language"):
+            Project({"project": {"name": "X", "language": code}})
+    assert Project({"project": {"name": "X", "language": "es-CL"}}).language == "es"
+
+
+def test_context_flows_with_unknown_keys_are_errors(example_data):
+    # An unquoted comma inside {...} splits the label and leaves a stray key behind.
+    example_data["context"]["flows"].append({"actor": "receptionist", "direction": "in", "label": "Client",
+                                             "pet and appointment data": None})
+    assert "unknown-key" in codes(validate(Project(example_data)), "error")
