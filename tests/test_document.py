@@ -157,3 +157,18 @@ def test_example_document_builds_end_to_end(tmp_path):
     assert info["problems"] == [] and info["cited"] == ["cockburn", "omguml"]
     assert [c["label"] for c in info["captions"]].count("Figure") == 3
     assert (tmp_path / ".sedocs" / "example-figure1.svg").is_file()
+
+
+def test_use_case_cards_pass_their_source_option_to_every_card(tmp_path):
+    spec = base_spec()
+    spec["profile"] = {"captions": {"source_line": True}}
+    spec["sections"] = [{"heading": "Cards", "content": [{"use_case_cards": {"module": "M2", "source": False}}]}]
+    silenced = build_document(write_spec(tmp_path, spec), tmp_path / "off.docx")
+    assert silenced.tables == 3
+    assert not any(line.startswith("Source:") for line in body_text(silenced.output))
+    spec["sections"][0]["content"] = [{"use_case_cards": {"module": "M2", "source": "Source: workshop notes."}}]
+    custom = build_document(write_spec(tmp_path, spec), tmp_path / "custom.docx")
+    assert body_text(custom.output).count("Source: workshop notes.") == 3
+    spec["sections"][0]["content"] = [{"use_case_cards": {"module": "M2", "title": "One title for all"}}]
+    with pytest.raises(BuildError, match="use_case_cards: unknown option"):
+        build_document(write_spec(tmp_path, spec), tmp_path / "bad.docx")

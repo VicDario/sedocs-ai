@@ -671,8 +671,15 @@ class _Builder:
         self._titled_table(title, ["", ""], rows, options.get("source"), widths=[24, 76], label_cols=(0,))
 
     def _b_use_case_cards(self, value) -> None:
-        for uc in self._selected(self._options(value, "module")):
-            self._b_use_case_card(uc["id"])
+        options = self._options(value, "module")
+        unknown = set(options) - {"module", "source"}
+        if unknown:  # each card is titled after its own use case, so there is no shared title to set
+            raise BuildError(f"use_case_cards: unknown option(s) {', '.join(sorted(unknown))} (known: module, source)")
+        for uc in self._selected(options):
+            card = {"id": uc["id"]}
+            if "source" in options:
+                card["source"] = options["source"]
+            self._b_use_case_card(card)
 
     def _b_traceability_table(self, value) -> None:
         options = self._options(value, "title")
