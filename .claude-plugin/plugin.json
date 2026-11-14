@@ -1,0 +1,9 @@
+{
+  "name": "sedocs-ai",
+  "description": "Skills that build software engineering documents (requirements, use cases, UML diagrams, Word documents) from a single project model, using the sedocs command-line tool.",
+  "version": "0.1.0",
+  "author": { "name": "VicDario" },
+  "homepage": "https://github.com/VicDario/sedocs-ai",
+  "repository": "https://github.com/VicDario/sedocs-ai",
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "sedocs-ai",
+  "owner": { "name": "VicDario" },
+  "description": "Software engineering documents from a single project model.",
+  "plugins": [
+    {
+      "name": "sedocs-ai",
+      "source": "./",
+      "description": "Skills that build requirements, use cases, UML diagrams and Word documents from a project model.",
+      "version": "0.1.0"
+    }
+  ]
+}

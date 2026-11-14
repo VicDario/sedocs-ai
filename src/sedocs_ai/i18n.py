@@ -44,8 +44,6 @@ LABELS: dict[str, dict[str, str]] = {
         "human": "Person",
         "system": "System",
         "generalizes": "Specializes",
-        "edition": "{n} ed.",
-        "retrieved": "",
         "lcid": "1033",
     },
     "es": {
@@ -86,8 +84,6 @@ LABELS: dict[str, dict[str, str]] = {
         "human": "Persona",
         "system": "Sistema",
         "generalizes": "Especializa a",
-        "edition": "{n} ed.",
-        "retrieved": "",
         "lcid": "3082",
     },
 }

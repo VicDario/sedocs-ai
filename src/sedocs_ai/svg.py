@@ -202,11 +202,3 @@ def arrow_filled(tip, prev, size=FILLED_ARROW):
     d = " ".join(f"{fx(px)},{fx(py)}" for px, py in pts)
     return f'<polygon points="{d}" fill="{STROKE}" stroke="{STROKE}" stroke-width="1"/>', base
 
-
-def longest_segment_midpoint(points):
-    best, best_len = points[0], -1.0
-    for (x0, y0), (x1, y1) in zip(points, points[1:]):
-        length = math.hypot(x1 - x0, y1 - y0)
-        if length > best_len:
-            best_len, best = length, ((x0 + x1) / 2, (y0 + y1) / 2)
-    return best
