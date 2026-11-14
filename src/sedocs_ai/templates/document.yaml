@@ -1,0 +1,36 @@
+# Document spec. Build it with `sedocs build document.yaml`.
+document:
+  title: Title of the document
+  responsible:
+    - name: Full name
+      role: Role                # optional
+  date: 2026-01-01
+  version: "0.1"                # optional
+  status: Draft                 # optional
+  language: en
+
+model: project.yaml
+
+# profile: default              # or a path to a profile file, or inline settings such as:
+# profile:
+#   template: company-template.docx
+#   captions: {position: above, source_line: false}
+#   toc: true
+
+sources: []                     # cite with {cite:id}; see the document skill reference
+
+sections:
+  - heading: Introduction
+    content:
+      - Purpose and scope of this document.
+  - heading: Requirements
+    content:
+      - requirements_table: {kind: functional, title: Functional requirements}
+      - requirements_table: {kind: non_functional, title: Non-functional requirements}
+  - heading: Use cases
+    content:
+      - figure:
+          title: Use case diagram
+          diagram: {type: usecase}
+      - use_case_table: {title: Use cases of the system}
+      - use_case_cards: {}
