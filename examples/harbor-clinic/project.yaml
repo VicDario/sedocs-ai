@@ -162,13 +162,27 @@ use_cases:
 
 context:
   flows:
-    - {actor: receptionist, direction: in, label: Client, pet and appointment data}
-    - {actor: receptionist, direction: out, label: Calendar and free slots}
-    - {actor: veterinarian, direction: in, label: Diagnosis and treatment}
-    - {actor: veterinarian, direction: out, label: Agenda and clinical history}
-    - {actor: pet_owner, direction: out, label: Appointment confirmation}
-    - {actor: email_service, direction: out, label: Message to deliver}
-    - {actor: email_service, direction: in, label: Delivery result}
+    - actor: receptionist
+      direction: in
+      label: Client, pet and appointment data
+    - actor: receptionist
+      direction: out
+      label: Calendar and free slots
+    - actor: veterinarian
+      direction: in
+      label: Diagnosis and treatment
+    - actor: veterinarian
+      direction: out
+      label: Agenda and clinical history
+    - actor: pet_owner
+      direction: out
+      label: Appointment confirmation
+    - actor: email_service
+      direction: out
+      label: Message to deliver
+    - actor: email_service
+      direction: in
+      label: Delivery result
 
 team:
   - name: Jane Doe
