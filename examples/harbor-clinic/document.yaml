@@ -1,0 +1,78 @@
+# Example document spec: a use case specification built from project.yaml.
+document:
+  title: Use Case Specification
+  responsible:
+    - name: Jane Doe
+      role: Business analyst
+    - name: John Roe
+      role: QA lead
+  date: 2026-03-02
+  version: "1.0"
+  status: Draft
+
+model: project.yaml
+
+profile:
+  toc: true
+  captions:
+    position: above
+
+sources:
+  - id: omg-uml
+    type: standard
+    organization: Object Management Group
+    year: 2017
+    title: OMG Unified Modeling Language
+    number: Version 2.5.1
+    url: https://www.omg.org/spec/UML/2.5.1
+  - id: cockburn
+    type: book
+    authors:
+      - {family: Cockburn, given: Alistair}
+    year: 2001
+    title: Writing effective use cases
+    publisher: Addison-Wesley
+
+sections:
+  - heading: Introduction
+    content:
+      - >-
+        This document specifies the use cases of the **Appointment Booking System** of Harbor Vet
+        Clinic. The diagrams follow the UML notation {cite:omg-uml} and each use case is written as
+        a goal of one actor, with its main flow, alternatives and exceptions {cite:cockburn}.
+      - bullets:
+          - The system boundary and the actors are set by the context diagram.
+          - Every use case is traced to at least one functional requirement.
+  - heading: System context
+    content:
+      - The system exchanges information with four actors, as the following figure shows.
+      - figure:
+          title: Context diagram of the Appointment Booking System
+          diagram: {type: context}
+      - actors_table: Actors of the system
+  - heading: Requirements
+    content:
+      - requirements_table: {kind: functional, title: Functional requirements}
+      - requirements_table: {kind: non_functional, title: Non-functional requirements}
+      - business_rules_table: Business rules
+  - heading: Use cases
+    sections:
+      - heading: Scheduling
+        content:
+          - figure:
+              title: Use case diagram of the Scheduling module
+              diagram: {type: usecase, module: M1}
+          - use_case_table: {module: M1, title: Use cases of the Scheduling module}
+          - use_case_card: UC-1.01
+      - heading: Clinical records
+        content:
+          - figure:
+              title: Use case diagram of the Clinical records module
+              diagram: {type: usecase, module: M2}
+          - use_case_table: {module: M2, title: Use cases of the Clinical records module}
+  - heading: Traceability
+    content:
+      - traceability_table: Functional requirements, use cases and business rules
+  - heading: References
+    content:
+      - references: true
