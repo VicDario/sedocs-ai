@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sedocs-ai"
+version = "0.1.0"
+description = "Software engineering documents from a single project model: UML diagrams, requirement tables and Word documents, with agent skills that drive the tool."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "python-docx>=1.1",
+    "PyYAML>=6.0",
+]
+keywords = ["software-engineering", "uml", "use-cases", "requirements", "docx", "agent-skills"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Documentation",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+sedocs = "sedocs_ai.cli:main"
+
+[project.urls]
+Repository = "https://github.com/VicDario/sedocs-ai"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sedocs_ai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

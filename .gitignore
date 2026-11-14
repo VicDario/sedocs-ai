@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# sedocs build artefacts
+.sedocs/
+*.pdf
+examples/**/out/
+
+# Local-only material: never committed
+.private/
+odd/
