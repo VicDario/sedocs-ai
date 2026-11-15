@@ -1,0 +1,62 @@
+# Project model: the single source every diagram, table and card is generated from.
+# Run `sedocs check project.yaml` after each edit.
+project:
+  name: Name of the system
+  organization: Name of the organisation   # optional
+  language: en                              # output language: en or es
+
+actors:
+  - id: user
+    name: User
+    kind: human          # human or system
+    type: primary        # primary, secondary or external
+    description: Who this actor is and what they want from the system.
+
+requirements:
+  functional:
+    - id: FR-01
+      name: Short name
+      description: The system shall ...
+      actors: [user]
+  non_functional:
+    - id: NFR-01
+      category: Performance
+      name: Short name
+      description: A property with a value that can be measured.
+
+business_rules:
+  - id: BR-01
+    description: A rule of the business that the system must enforce.
+    requirements: [FR-01]
+
+modules:
+  - id: M1
+    name: Name of the module
+
+use_cases:
+  - id: UC-1.01
+    name: Verb and object, the goal of the actor
+    module: M1
+    actors: [user]
+    requirements: [FR-01]
+    # includes: [UC-1.02]
+    # extends:
+    #   - target: UC-1.02
+    #     condition: when this happens
+    # specializes: UC-1.02
+    purpose: Why the actor does this.
+    preconditions:
+      - What must be true before.
+    postconditions:
+      - What is true after.
+    main_flow:
+      - The actor does something.
+      - The system answers.
+    alternative_flows: []
+    exceptions: []
+
+# context:
+#   flows:
+#     - actor: user
+#       direction: in        # in: towards the system; out: from the system
+#       label: What travels

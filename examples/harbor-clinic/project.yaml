@@ -1,0 +1,191 @@
+# Example project model. The company, the people and the system are invented.
+project:
+  name: Appointment Booking System
+  organization: Harbor Vet Clinic
+  language: en
+
+actors:
+  - id: receptionist
+    name: Receptionist
+    kind: human
+    type: primary
+    description: Front-desk staff who book, move and cancel appointments.
+  - id: veterinarian
+    name: Veterinarian
+    kind: human
+    type: primary
+    description: Clinician who sees the patient and records the visit.
+  - id: pet_owner
+    name: Pet owner
+    kind: human
+    type: secondary
+    description: Client who receives confirmations and reminders.
+  - id: email_service
+    name: Email service
+    kind: system
+    type: external
+    description: External service that delivers the messages sent by the system.
+
+requirements:
+  functional:
+    - id: FR-01
+      name: Book appointment
+      description: The system shall let the receptionist book an appointment for a registered pet in a free slot.
+      actors: [receptionist]
+    - id: FR-02
+      name: Manage appointment
+      description: The system shall let the receptionist reschedule or cancel an existing appointment.
+      actors: [receptionist]
+    - id: FR-03
+      name: Register client and pet
+      description: The system shall let the receptionist register a client and the pets that belong to that client.
+      actors: [receptionist]
+    - id: FR-04
+      name: Notify the pet owner
+      description: The system shall send a confirmation by email whenever an appointment is booked or changed.
+      actors: [pet_owner, email_service]
+    - id: FR-05
+      name: Record the visit
+      description: The system shall let the veterinarian record the diagnosis and the treatment of a visit.
+      actors: [veterinarian]
+    - id: FR-06
+      name: Review the clinical history
+      description: The system shall show the veterinarian the previous visits of a pet.
+      actors: [veterinarian]
+  non_functional:
+    - id: NFR-01
+      category: Performance
+      name: Response time
+      description: Every screen shall respond in under 2 seconds with 20 concurrent users.
+    - id: NFR-02
+      category: Security
+      name: Access by role
+      description: Clinical records shall be visible only to authenticated veterinarians.
+    - id: NFR-03
+      category: Usability
+      name: Booking in one screen
+      description: A receptionist shall be able to book an appointment without leaving the calendar screen.
+
+business_rules:
+  - id: BR-01
+    description: An appointment can only be booked for a pet that is registered with an active client.
+    requirements: [FR-01, FR-03]
+  - id: BR-02
+    description: Two appointments of the same veterinarian cannot overlap.
+    requirements: [FR-01, FR-02]
+  - id: BR-03
+    description: A visit can only be recorded for an appointment that was not cancelled.
+    requirements: [FR-05]
+
+modules:
+  - id: M1
+    name: Scheduling
+  - id: M2
+    name: Clinical records
+
+use_cases:
+  - id: UC-1.01
+    name: Book appointment
+    module: M1
+    actors: [receptionist]
+    requirements: [FR-01]
+    includes: [UC-1.05]
+    purpose: Reserve a slot with a veterinarian for a registered pet.
+    description: The receptionist picks a pet, a veterinarian and a free slot, and the system stores the appointment and notifies the owner.
+    preconditions:
+      - The receptionist is signed in.
+      - The pet is registered with an active client.
+    postconditions:
+      - The appointment is stored with status Booked.
+      - The pet owner receives a confirmation.
+    main_flow:
+      - The receptionist searches for the pet by name or by client.
+      - The system shows the pet and the free slots of the selected week.
+      - The receptionist selects a veterinarian and a slot and confirms.
+      - The system checks that the slot is still free.
+      - The system stores the appointment and sends the confirmation (UC-1.05).
+    alternative_flows:
+      - "1a. The pet is not registered: the receptionist registers the client and the pet (UC-1.04) and continues at step 2."
+    exceptions:
+      - "4a. The slot was taken meanwhile: the system reports it and returns to step 2."
+  - id: UC-1.02
+    name: Reschedule appointment
+    module: M1
+    actors: [receptionist]
+    requirements: [FR-02]
+    includes: [UC-1.05]
+    purpose: Move an existing appointment to another free slot.
+  - id: UC-1.03
+    name: Cancel appointment
+    module: M1
+    actors: [receptionist]
+    requirements: [FR-02]
+    includes: [UC-1.05]
+    purpose: Release the slot of an appointment that will not take place.
+  - id: UC-1.04
+    name: Register client and pet
+    module: M1
+    actors: [receptionist]
+    requirements: [FR-03]
+    extends:
+      - target: UC-1.01
+        condition: the pet is not registered
+    purpose: Create the client record and the pets that belong to it.
+  - id: UC-1.05
+    name: Send confirmation
+    module: M1
+    actors: [pet_owner, email_service]
+    requirements: [FR-04]
+    purpose: Tell the pet owner that an appointment was booked or changed.
+  - id: UC-2.01
+    name: Record visit
+    module: M2
+    actors: [veterinarian]
+    requirements: [FR-05]
+    includes: [UC-2.03]
+    purpose: Store the diagnosis and the treatment of a visit.
+  - id: UC-2.02
+    name: Prescribe treatment
+    module: M2
+    actors: [veterinarian]
+    requirements: [FR-05]
+    extends:
+      - target: UC-2.01
+        condition: the visit needs medication
+    purpose: Add a prescription to the visit that is being recorded.
+  - id: UC-2.03
+    name: Review clinical history
+    module: M2
+    actors: [veterinarian]
+    requirements: [FR-06]
+    purpose: See the previous visits of a pet before or during a visit.
+
+context:
+  flows:
+    - actor: receptionist
+      direction: in
+      label: Client, pet and appointment data
+    - actor: receptionist
+      direction: out
+      label: Calendar and free slots
+    - actor: veterinarian
+      direction: in
+      label: Diagnosis and treatment
+    - actor: veterinarian
+      direction: out
+      label: Agenda and clinical history
+    - actor: pet_owner
+      direction: out
+      label: Appointment confirmation
+    - actor: email_service
+      direction: out
+      label: Message to deliver
+    - actor: email_service
+      direction: in
+      label: Delivery result
+
+team:
+  - name: Jane Doe
+    role: Business analyst
+  - name: John Roe
+    role: QA lead
