@@ -1,5 +1,7 @@
 # sedocs-ai
 
+[![CI](https://github.com/VicDario/sedocs-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/VicDario/sedocs-ai/actions/workflows/ci.yml)
+
 Software engineering documents from a single project model.
 
 You describe a project once, in one YAML file: actors, requirements, business rules, modules and use cases. `sedocs` validates that model and generates the artefacts from it: UML use case diagrams, a context diagram, requirement and traceability tables, use case cards, and the Word document that holds them. Because everything comes from the same model, identifiers and names stay consistent across the whole document.
@@ -108,7 +110,7 @@ uv venv && uv pip install -e ".[dev]"
 claude plugin validate .
 ```
 
-The examples and tests use invented companies and people only. `scripts/privacy_scan.py` rejects text shaped like a national ID number and any term from an optional local list, `.private/forbidden-terms.txt`, which is git-ignored. To run it before every commit:
+The examples and tests use invented companies and people only. `scripts/privacy_scan.py` rejects text shaped like a national ID number and any term from an optional local list, `.private/forbidden-terms.txt`, which is git-ignored. Every pull request runs the tests and this scan on GitHub; the term list is never published, so there the scan checks ID-shaped numbers only. To run it with your own list before every commit:
 
 ```
 printf '#!/bin/sh\nexec python3 scripts/privacy_scan.py\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
