@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and privacy scan (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Diagrams need an SVG converter; the document preview needs LibreOffice and poppler.
+      # Without them the tests that use them are skipped, so they are installed here.
+      - name: Install rendering tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            librsvg2-bin poppler-utils libreoffice-writer-nogui fonts-liberation
+
+      - name: Install the package
+        run: python -m pip install -e ".[dev]"
+
+      # Fails when a tool is missing, so that a test is never skipped without anyone noticing.
+      # One check per tool: a single `command -v` with several names passes if any one exists.
+      - name: Check the tools
+        run: |
+          for tool in rsvg-convert soffice pdftoppm; do
+            command -v "$tool" || { echo "missing tool: $tool"; exit 1; }
+          done
+          sedocs doctor
+
+      # The local term list is never published, so here the scan checks ID-shaped numbers only.
+      - name: Privacy scan
+        run: python scripts/privacy_scan.py
+
+      - name: Tests
+        run: python -m pytest -ra

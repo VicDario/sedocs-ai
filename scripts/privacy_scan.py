@@ -10,7 +10,7 @@ What is scanned: every tracked file, and for files with staged changes the stage
 (what the commit will contain), not the copy in the working tree.
 
 Usage: python scripts/privacy_scan.py
-Exit code 1 when something is found.
+Exit code 1 when something is found, 2 when the repository cannot be read. Both block a commit.
 """
 from __future__ import annotations
 
@@ -25,7 +25,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TERMS_FILE = ROOT / ".private" / "forbidden-terms.txt"
 # Seven or eight digits, with or without dots between the groups, a hyphen and a check digit.
-ID_NUMBER = re.compile(r"(?<![\w.])(?:\d{1,2}\.\d{3}\.\d{3}|\d{7,8})-[\dkK](?!\w)")
+# A period right before it is allowed (end of a sentence); a digit and a period is not, because
+# that is the tail of a longer dotted number.
+ID_NUMBER = re.compile(r"(?<!\w)(?<!\d\.)(?:\d{1,2}\.\d{3}\.\d{3}|\d{7,8})-[\dkK](?!\w)")
+SUBMODULE_MODE = "160000"
 OFFICE_SUFFIXES = {".docx", ".pptx", ".xlsx"}
 SKIPPED_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip"}
 TEXT_RUN = re.compile(r"<(?:w|a):t(?:\s[^>]*)?>([^<]*)</(?:w|a):t>")
@@ -46,13 +49,35 @@ def _names(*args: str) -> list[str]:
     return [name for name in _git(*args, "-z").decode("utf-8", "surrogateescape").split("\0") if name]
 
 
+def _check_root() -> None:
+    """Git answers for whatever repository surrounds ROOT. If that is not the repository this
+    script belongs to, its file list says nothing about the files next to the script."""
+    top = Path(_git("rev-parse", "--show-toplevel").decode("utf-8", "surrogateescape").strip())
+    if top.resolve() != ROOT.resolve():
+        raise OSError("this script is not in the scripts folder at the root of the repository git found")
+
+
+def _submodules() -> set[str]:
+    """Paths the index holds as a submodule: a pointer to a commit, with no content to scan."""
+    paths = set()
+    for entry in _names("ls-files", "--stage"):
+        details, _, name = entry.partition("\t")
+        if details.split(" ", 1)[0] == SUBMODULE_MODE:
+            paths.add(name)
+    return paths
+
+
 def contents() -> list[tuple[str, bytes]]:
     """(path, bytes) of everything to scan; staged files are read from the index."""
     staged = set(_names("diff", "--cached", "--name-only", "--diff-filter=ACMR"))
+    submodules = _submodules()
     found = []
     for name in sorted(set(_names("ls-files")) | staged):
+        if name in submodules:
+            continue
         if name in staged:
-            found.append((name, _git("show", f":{name}")))
+            # stage 0 is named, so a file name that starts like a stage number is not misread
+            found.append((name, _git("show", f":0:{name}")))
         elif (ROOT / name).is_file():
             found.append((name, (ROOT / name).read_bytes()))
     return found
@@ -102,7 +127,15 @@ def scan_text(text: str, terms: list[tuple[str, re.Pattern[str]]]) -> list[tuple
 def main() -> int:
     terms = load_terms()
     findings: list[str] = []
-    for name, data in contents():
+    try:
+        _check_root()
+        files = contents()
+    except (subprocess.CalledProcessError, OSError) as error:
+        reason = (getattr(error, "stderr", None) or b"").decode("utf-8", "replace").strip().splitlines()
+        print("privacy scan could not read the repository, so nothing was checked")
+        print("  " + (reason[0] if reason else str(error)))
+        return 2
+    for name, data in files:
         suffix = Path(name).suffix.lower()
         if suffix in SKIPPED_SUFFIXES:
             continue
